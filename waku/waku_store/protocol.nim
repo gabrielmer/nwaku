@@ -51,7 +51,7 @@ proc initProtocolHandler(ws: WakuStore) =
 
     let decodeRes = HistoryRPC.decode(buf)
     if decodeRes.isErr():
-      error "failed to decode rpc", peerId= $conn.peerId
+      error "failed to decode history rpc", peerId= $conn.peerId, error=decodeRes.error
       waku_store_errors.inc(labelValues = [decodeRpcFailure])
       # TODO: Return (BAD_REQUEST, cause: "decode rpc failed")
       return
