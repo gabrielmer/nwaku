@@ -234,7 +234,7 @@ when defined(rln_v2):
     if g.userMessageLimit.isNone():
       return err("user message limit is not set")
     debug "generating proof params",
-      epoch = fromEpoch(epoch)
+      epoch = fromEpoch(epoch),
       messageId = messageId,
       userMessageLimit = g.userMessageLimit.get(),
       idCommitment = inHex(g.idCredentials.get().idCommitment),
