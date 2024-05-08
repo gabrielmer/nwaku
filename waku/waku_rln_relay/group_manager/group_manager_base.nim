@@ -3,8 +3,9 @@ import
   ../protocol_types,
   ../protocol_metrics,
   ../constants,
+  ../conversion_utils,
   ../rln
-import options, chronos, stew/results, std/[deques, sequtils]
+import options, chronos, chronicles, stew/results, std/[deques, sequtils]
 
 export options, chronos, results, protocol_types, protocol_metrics, deques
 
@@ -232,6 +233,12 @@ when defined(rln_v2):
       return err("membership index is not set")
     if g.userMessageLimit.isNone():
       return err("user message limit is not set")
+    debug "generating proof params",
+      epoch = fromEpoch(epoch)
+      messageId = messageId,
+      userMessageLimit = g.userMessageLimit.get(),
+      idCommitment = inHex(g.idCredentials.get().idCommitment),
+      index = g.membershipIndex.get()
     waku_rln_proof_generation_duration_seconds.nanosecondTime:
       let proof = proofGen(
         rlnInstance = g.rlnInstance,

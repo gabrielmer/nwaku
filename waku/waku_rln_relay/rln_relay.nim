@@ -366,7 +366,7 @@ proc generateRlnValidator*(
       payload = string.fromBytes(message.payload)
     case validationRes
     of Valid:
-      trace "message validity is verified, relaying:",
+      debug "message validity is verified, relaying:",
         proof = proof,
         root = root,
         shareX = shareX,
@@ -374,7 +374,7 @@ proc generateRlnValidator*(
         nullifier = nullifier
       return pubsub.ValidationResult.Accept
     of Invalid:
-      trace "message validity could not be verified, discarding:",
+      debug "message validity could not be verified, discarding:",
         proof = proof,
         root = root,
         shareX = shareX,
@@ -382,7 +382,7 @@ proc generateRlnValidator*(
         nullifier = nullifier
       return pubsub.ValidationResult.Reject
     of Spam:
-      trace "A spam message is found! yay! discarding:",
+      debug "A spam message is found! yay! discarding:",
         proof = proof,
         root = root,
         shareX = shareX,
