@@ -49,7 +49,6 @@ proc runWaku(ctx: ptr Context) {.async.} =
       discard ctx.respChannel.trySend(threadSafeResp)
       discard ctx.respSignal.fireSync()
 
-
 proc run(ctx: ptr Context) {.thread.} =
   ## Launch waku worker
   waitFor runWaku(ctx)
@@ -100,12 +99,12 @@ proc sendRequestToWakuThread*(
     return err("failed fireSync: " & $fireSyncRes.error)
 
   if fireSyncRes.get() == false:
-   return err("Couldn't fireSync in time")
+    return err("Couldn't fireSync in time")
 
   # Waiting for the response
   let res = waitSync(ctx.respSignal)
   if res.isErr():
-   return err("Couldnt receive response signal")
+    return err("Couldnt receive response signal")
 
   var response: ptr InterThreadResponse
   var recvOk = ctx.respChannel.tryRecv(response)
