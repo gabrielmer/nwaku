@@ -1,7 +1,7 @@
 {.used.}
 
 import
-  std/[options, times],
+  std/options,
   testutils/unittests,
   chronos,
   chronicles,
@@ -13,14 +13,13 @@ from std/os import sleep
 
 import
   ../../waku/[
-    common/paging,
     node/peer_manager,
     waku_core,
     waku_core/message/digest,
     waku_sync,
     waku_sync/raw_bindings,
   ],
-  ../testlib/[common, wakucore, testasync],
+  ../testlib/[wakucore, testasync],
   ./sync_utils
 
 random.randomize()
@@ -28,8 +27,6 @@ random.randomize()
 suite "Waku Sync":
   var serverSwitch {.threadvar.}: Switch
   var clientSwitch {.threadvar.}: Switch
-
-  var protoHandler {.threadvar.}: SyncCallback
 
   var server {.threadvar.}: WakuSync
   var client {.threadvar.}: WakuSync
@@ -42,15 +39,8 @@ suite "Waku Sync":
 
     await allFutures(serverSwitch.start(), clientSwitch.start())
 
-    protoHandler = proc(
-        hashes: seq[WakuMessageHash], peer: RemotePeerInfo
-    ) {.async: (raises: []), closure, gcsafe.} =
-      debug "Received needHashes from peer:", len = hashes.len
-      for hash in hashes:
-        debug "Hash received from peer:", hash = hash.to0xHex()
-
-    server = await newTestWakuSync(serverSwitch, handler = protoHandler)
-    client = await newTestWakuSync(clientSwitch, handler = protoHandler)
+    server = newTestWakuSync(serverSwitch)
+    client = newTestWakuSync(clientSwitch)
 
     serverPeerInfo = serverSwitch.peerInfo.toRemotePeerInfo()
 
@@ -75,7 +65,7 @@ suite "Waku Sync":
       server.ingessMessage(DefaultPubsubTopic, msg3)
 
       var hashes = await client.sync(serverPeerInfo)
-      await sleepAsync(1) # to ensure graceful shutdown
+
       require (hashes.isOk())
       check:
         hashes.value.len == 3
@@ -105,18 +95,29 @@ suite "Waku Sync":
       client.ingessMessage(DefaultPubsubTopic, msg1)
       server.ingessMessage(DefaultPubsubTopic, msg2)
 
-      var hashes = await client.sync(serverPeerInfo)
-      require (hashes.isOk())
+      var syncRes = await client.sync(serverPeerInfo)
+
       check:
-        hashes.value.len == 1
-        hashes.value[0] == computeMessageHash(pubsubTopic = DefaultPubsubTopic, msg2)
+        syncRes.isOk()
+
+      var hashes = syncRes.get()
+
+      check:
+        hashes.len == 1
+        hashes[0] == computeMessageHash(pubsubTopic = DefaultPubsubTopic, msg2)
+
       #Assuming message is fetched from peer
       client.ingessMessage(DefaultPubsubTopic, msg2)
-      sleep(1000)
-      hashes = await client.sync(serverPeerInfo)
-      require (hashes.isOk())
+
+      syncRes = await client.sync(serverPeerInfo)
+
       check:
-        hashes.value.len == 0
+        syncRes.isOk()
+
+      hashes = syncRes.get()
+
+      check:
+        hashes.len == 0
 
     #[     asyncTest "sync 2 nodes duplicate hashes":
       let msg1 = fakeWakuMessage(contentTopic = DefaultContentTopic)
@@ -210,7 +211,7 @@ suite "Waku Sync":
       ## Setup
       let client2Switch = newTestSwitch()
       await client2Switch.start()
-      let client2 = await newTestWakuSync(client2Switch, handler = protoHandler)
+      let client2 = newTestWakuSync(client2Switch)
 
       let msgCount = 10000
       var i = 0
@@ -259,10 +260,10 @@ suite "Waku Sync":
       )
 
       let
-        client2 = await newTestWakuSync(client2Switch, handler = protoHandler)
-        client3 = await newTestWakuSync(client3Switch, handler = protoHandler)
-        client4 = await newTestWakuSync(client4Switch, handler = protoHandler)
-        client5 = await newTestWakuSync(client5Switch, handler = protoHandler)
+        client2 = newTestWakuSync(client2Switch)
+        client3 = newTestWakuSync(client3Switch)
+        client4 = newTestWakuSync(client4Switch)
+        client5 = newTestWakuSync(client5Switch)
 
       let msgCount = 100000
       var i = 0
@@ -283,9 +284,9 @@ suite "Waku Sync":
         i = i + 1
       #info "client2 storage size", size = client2.storageSize()
 
-      var timeBefore = cpuTime()
+      var timeBefore = getNowInNanosecondTime()
       let hashes1 = await client.sync(serverPeerInfo)
-      var timeAfter = cpuTime()
+      var timeAfter = getNowInNanosecondTime()
       var syncTime = (timeAfter - timeBefore)
       info "sync time in seconds", msgsTotal = msgCount, diff = 1, syncTime = syncTime
       assert hashes1.isOk(), $hashes1.error
@@ -293,9 +294,9 @@ suite "Waku Sync":
         hashes1.value.len == 1
         #TODO: Check if all diffHashes are there in needHashes
 
-      timeBefore = cpuTime()
+      timeBefore = getNowInNanosecondTime()
       let hashes2 = await client2.sync(serverPeerInfo)
-      timeAfter = cpuTime()
+      timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
       info "sync time in seconds", msgsTotal = msgCount, diff = 10, syncTime = syncTime
       assert hashes2.isOk(), $hashes2.error
@@ -303,9 +304,9 @@ suite "Waku Sync":
         hashes2.value.len == 10
         #TODO: Check if all diffHashes are there in needHashes
 
-      timeBefore = cpuTime()
+      timeBefore = getNowInNanosecondTime()
       let hashes3 = await client3.sync(serverPeerInfo)
-      timeAfter = cpuTime()
+      timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
       info "sync time in seconds", msgsTotal = msgCount, diff = 100, syncTime = syncTime
       assert hashes3.isOk(), $hashes3.error
@@ -313,9 +314,9 @@ suite "Waku Sync":
         hashes3.value.len == 100
         #TODO: Check if all diffHashes are there in needHashes
 
-      timeBefore = cpuTime()
+      timeBefore = getNowInNanosecondTime()
       let hashes4 = await client4.sync(serverPeerInfo)
-      timeAfter = cpuTime()
+      timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
       info "sync time in seconds",
         msgsTotal = msgCount, diff = 1000, syncTime = syncTime
@@ -324,9 +325,9 @@ suite "Waku Sync":
         hashes4.value.len == 1000
         #TODO: Check if all diffHashes are there in needHashes
 
-      timeBefore = cpuTime()
+      timeBefore = getNowInNanosecondTime()
       let hashes5 = await client5.sync(serverPeerInfo)
-      timeAfter = cpuTime()
+      timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
       info "sync time in seconds",
         msgsTotal = msgCount, diff = 10000, syncTime = syncTime
@@ -362,17 +363,10 @@ suite "Waku Sync":
       let msg3 = fakeWakuMessage(contentTopic = DefaultContentTopic)
       let hash3 = computeMessageHash(DefaultPubsubTopic, msg3)
 
-      let protoHandler: SyncCallback = proc(
-          hashes: seq[WakuMessageHash], peer: RemotePeerInfo
-      ) {.async: (raises: []), closure, gcsafe.} =
-        debug "Received needHashes from peer:", len = hashes.len
-        for hash in hashes:
-          debug "Hash received from peer:", hash = hash.to0xHex()
-
       let
-        node1 = await newTestWakuSync(node1Switch, handler = protoHandler)
-        node2 = await newTestWakuSync(node2Switch, handler = protoHandler)
-        node3 = await newTestWakuSync(node3Switch, handler = protoHandler)
+        node1 = newTestWakuSync(node1Switch)
+        node2 = newTestWakuSync(node2Switch)
+        node3 = newTestWakuSync(node3Switch)
 
       node1.ingessMessage(DefaultPubsubTopic, msg1)
       node2.ingessMessage(DefaultPubsubTopic, msg1)
@@ -404,6 +398,50 @@ suite "Waku Sync":
 
       await allFutures(node1.stop(), node2.stop(), node3.stop())
       await allFutures(node1Switch.stop(), node2Switch.stop(), node3Switch.stop())
+
+    asyncTest "pruning":
+      let switch = newTestSwitch()
+
+      await switch.start()
+
+      let
+        msg1 = fakeWakuMessage(contentTopic = DefaultContentTopic)
+        msgHash1 = computeMessageHash(DefaultPubsubTopic, msg1)
+        msg2 = fakeWakuMessage(contentTopic = DefaultContentTopic)
+        msgHash2 = computeMessageHash(DefaultPubsubTopic, msg2)
+        msg3 = fakeWakuMessage(contentTopic = DefaultContentTopic)
+        msgHash3 = computeMessageHash(DefaultPubsubTopic, msg3)
+        msg4 = fakeWakuMessage(contentTopic = DefaultContentTopic)
+        msgHash4 = computeMessageHash(DefaultPubsubTopic, msg4)
+
+      let prune: PruneCallback = proc(
+          pruneStart: Timestamp, pruneStop: Timestamp, cursor: Option[WakuMessageHash]
+      ): Future[
+          Result[(seq[(WakuMessageHash, Timestamp)], Option[WakuMessageHash]), string]
+      ] {.async: (raises: []), closure.} =
+        let kvs =
+          @[
+            (msgHash1, msg1.timestamp),
+            (msgHash2, msg2.timestamp),
+            (msgHash3, msg3.timestamp),
+            (msgHash4, msg4.timestamp),
+          ]
+        return ok((kvs, none(WakuMessageHash)))
+
+      let interval = 1.seconds
+
+      let wakuSync =
+        newTestWakuSync(switch = switch, prune = some(prune), interval = interval)
+
+      wakuSync.ingessMessage(DefaultPubsubTopic, msg1)
+      wakuSync.ingessMessage(DefaultPubsubTopic, msg2)
+      wakuSync.ingessMessage(DefaultPubsubTopic, msg3)
+      wakuSync.ingessMessage(DefaultPubsubTopic, msg4)
+
+      await sleepAsync(3.seconds)
+
+      check:
+        wakuSync.storageSize == 0
 
   suite "Bindings":
     asyncTest "test c integration":

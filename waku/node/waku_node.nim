@@ -197,59 +197,120 @@ proc connectToNodes*(
 
 ## Waku Sync
 
-proc mountWakuSync*(node: WakuNode): Result[void, string] =
+proc mountWakuSync*(
+    node: WakuNode,
+    maxFrameSize: int = DefaultMaxFrameSize,
+    syncInterval: timer.Duration = DefaultSyncInterval,
+    relayJitter: Duration = DefaultGossipSubJitter,
+    enablePruning: bool = true, # For testing purposes
+): Result[void, string] =
   if not node.wakuSync.isNil():
     return err("Waku sync already mounted, skipping")
 
-  let prune: PruneCallback = proc(
-      pruneStart: Timestamp, pruneStop: Timestamp, cursor: Option[WakuMessageHash]
-  ): Future[
-      Result[(seq[(WakuMessageHash, Timestamp)], Option[WakuMessageHash]), string]
-  ] {.async: (raises: []), closure, gcsafe.} =
-    let archiveCursor =
-      if cursor.isSome():
-        some(ArchiveCursor(hash: cursor.get()))
-      else:
-        none(ArchiveCursor)
+  var prune = none(PruneCallback)
 
-    let query = ArchiveQuery(
-      cursor: archiveCursor,
-      startTime: some(pruneStart),
-      endTime: some(pruneStop),
-      pageSize: 100,
+  if enablePruning:
+    prune = some(
+      proc(
+          pruneStart: Timestamp, pruneStop: Timestamp, cursor: Option[WakuMessageHash]
+      ): Future[
+          Result[(seq[(WakuMessageHash, Timestamp)], Option[WakuMessageHash]), string]
+      ] {.async: (raises: []), closure.} =
+        let archiveCursor =
+          if cursor.isSome():
+            some(ArchiveCursor(hash: cursor.get()))
+          else:
+            none(ArchiveCursor)
+
+        let query = ArchiveQuery(
+          includeData: true,
+          cursor: archiveCursor,
+          startTime: some(pruneStart),
+          endTime: some(pruneStop),
+          pageSize: 100,
+        )
+
+        let catchable = catch:
+          await node.wakuArchive.findMessages(query)
+
+        let res =
+          if catchable.isErr():
+            return err(catchable.error.msg)
+          else:
+            catchable.get()
+
+        let response = res.valueOr:
+          return err($error)
+
+        let elements = collect(newSeq):
+          for (hash, msg) in response.hashes.zip(response.messages):
+            (hash, msg.timestamp)
+
+        let cursor =
+          if response.cursor.isNone():
+            none(WakuMessageHash)
+          else:
+            some(response.cursor.get().hash)
+
+        return ok((elements, cursor))
     )
 
-    let catchable = catch:
-      await node.wakuArchive.findMessages(query)
+  let transfer: TransferCallback = proc(
+      hashes: seq[WakuMessageHash], peerId: PeerId
+  ): Future[Result[void, string]] {.async: (raises: []), closure.} =
+    var query = StoreQueryRequest()
+    query.includeData = true
+    query.messageHashes = hashes
+    query.paginationLimit = some(uint64(100))
 
-    let res =
-      if catchable.isErr():
-        return err(catchable.error.msg)
-      else:
-        catchable.get()
+    while true:
+      # Do we need a query retry mechanism??
+      let queryRes = catch:
+        await node.wakuStoreClient.query(query, peerId)
 
-    let response = res.valueOr:
-      return err($error)
+      let res =
+        if queryRes.isErr():
+          return err(queryRes.error.msg)
+        else:
+          queryRes.get()
 
-    let elements = collect(newSeq):
-      for (hash, msg) in response.hashes.zip(response.messages):
-        (hash, msg.timestamp)
+      let response = res.valueOr:
+        return err($error)
 
-    let cursor =
-      if response.cursor.isNone():
-        none(WakuMessageHash)
-      else:
-        some(response.cursor.get().hash)
+      query.paginationCursor = response.paginationCursor
 
-    return ok((elements, cursor))
+      for kv in response.messages:
+        let handleRes = catch:
+          await node.wakuArchive.handleMessage(kv.pubsubTopic.get(), kv.message.get())
 
-  #TODO add sync callback and options
-  node.wakuSync = WakuSync.new(peerManager = node.peerManager, pruneCB = some(prune))
+        if handleRes.isErr():
+          trace "message transfer failed", error = handleRes.error.msg
+          # Messages can be synced next time since they are not added to storage yet.
+          continue
+
+        node.wakuSync.ingessMessage(kv.pubsubTopic.get(), kv.message.get())
+
+      if query.paginationCursor.isNone():
+        break
+
+    return ok()
+
+  node.wakuSync = WakuSync.new(
+    peerManager = node.peerManager,
+    maxFrameSize = maxFrameSize,
+    syncInterval = syncInterval,
+    relayJitter = relayJitter,
+    pruneCB = prune,
+    transferCB = some(transfer),
+  )
 
   let catchRes = catch:
     node.switch.mount(node.wakuSync, protocolMatcher(WakuSyncCodec))
   if catchRes.isErr():
     return err(catchRes.error.msg)
+
+  if node.started:
+    node.wakuSync.start()
 
   return ok()
 
@@ -1278,6 +1339,9 @@ proc start*(node: WakuNode) {.async.} =
 
   if not node.wakuMetadata.isNil():
     node.wakuMetadata.start()
+
+  if not node.wakuSync.isNil():
+    node.wakuSync.start()
 
   ## The switch uses this mapper to update peer info addrs
   ## with announced addrs after start
