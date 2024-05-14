@@ -1,15 +1,13 @@
 {.used.}
 
 import
-  std/options,
+  std/[options, sets],
   testutils/unittests,
   chronos,
   chronicles,
   libp2p/crypto/crypto,
   stew/byteutils,
   std/random
-
-from std/os import sleep
 
 import
   ../../waku/[
@@ -119,27 +117,6 @@ suite "Waku Sync":
       check:
         hashes.len == 0
 
-    #[     asyncTest "sync 2 nodes duplicate hashes":
-      let msg1 = fakeWakuMessage(contentTopic = DefaultContentTopic)
-      let msg2 = fakeWakuMessage(contentTopic = DefaultContentTopic)
-
-      server.ingessMessage(DefaultPubsubTopic, msg1)
-      server.ingessMessage(DefaultPubsubTopic, msg1)
-      client.ingessMessage(DefaultPubsubTopic, msg1)
-      server.ingessMessage(DefaultPubsubTopic, msg2)
-
-      var hashes = await client.sync(serverPeerInfo)
-      require (hashes.isOk())
-      check:
-        hashes.value.len == 1
-        #hashes.value[0] == computeMessageHash(pubsubTopic = DefaultPubsubTopic, msg2)
-      #Assuming message is fetched from peer
-      client.ingessMessage(DefaultPubsubTopic, msg2)
-      sleep(1000)
-      hashes = await client.sync(serverPeerInfo)
-      require (hashes.isOk())
-      check:
-        hashes.value.len == 0 ]#
     asyncTest "sync 2 nodes same hashes":
       let msg1 = fakeWakuMessage(contentTopic = DefaultContentTopic)
       let msg2 = fakeWakuMessage(contentTopic = DefaultContentTopic)
@@ -158,7 +135,6 @@ suite "Waku Sync":
       var i = 0
       let msgCount = 100000
       var diffIndex = rand(msgCount)
-      debug "diffIndex is ", diffIndex = diffIndex
       var diffMsg: WakuMessage
       while i < msgCount:
         let msg = fakeWakuMessage(contentTopic = DefaultContentTopic)
@@ -167,10 +143,11 @@ suite "Waku Sync":
         else:
           diffMsg = msg
         server.ingessMessage(DefaultPubsubTopic, msg)
-        i = i + 1
+        i += 1
 
       let hashes = await client.sync(serverPeerInfo)
       assert hashes.isOk(), $hashes.error
+
       check:
         hashes.value.len == 1
         hashes.value[0] == computeMessageHash(DefaultPubsubTopic, diffMsg)
@@ -179,6 +156,7 @@ suite "Waku Sync":
       var i = 0
       let msgCount = 100000
       var diffCount = 10000
+
       var diffMsgHashes: seq[WakuMessageHash]
       var randIndexes: seq[int]
       while i < diffCount:
@@ -186,26 +164,27 @@ suite "Waku Sync":
         if randInt in randIndexes:
           continue
         randIndexes.add(randInt)
-        i = i + 1
+        i += 1
 
       i = 0
       var tmpDiffCnt = diffCount
       while i < msgCount:
         let msg = fakeWakuMessage(contentTopic = DefaultContentTopic)
         if tmpDiffCnt > 0 and i in randIndexes:
-          #info "not ingessing in client", i=i
           diffMsgHashes.add(computeMessageHash(DefaultPubsubTopic, msg))
           tmpDiffCnt = tmpDiffCnt - 1
         else:
           client.ingessMessage(DefaultPubsubTopic, msg)
 
         server.ingessMessage(DefaultPubsubTopic, msg)
-        i = i + 1
+        i += 1
+
       let hashes = await client.sync(serverPeerInfo)
       assert hashes.isOk(), $hashes.error
+
       check:
         hashes.value.len == diffCount
-        #TODO: Check if all diffHashes are there in needHashes
+        toHashSet(hashes.value) == toHashSet(diffMsgHashes)
 
     asyncTest "sync 3 nodes 2 client 1 server":
       ## Setup
@@ -217,7 +196,7 @@ suite "Waku Sync":
       var i = 0
 
       while i < msgCount:
-        i = i + 1
+        i += 1
         let msg = fakeWakuMessage(contentTopic = DefaultContentTopic)
         if i mod 2 == 0:
           client2.ingessMessage(DefaultPubsubTopic, msg)
@@ -238,8 +217,6 @@ suite "Waku Sync":
       check:
         hashes1.value.len == int(msgCount / 2)
         hashes2.value.len == int(msgCount / 2)
-
-        #TODO: Check if all diffHashes are there in needHashes
 
       await client2.stop()
       await client2Switch.stop()
@@ -281,60 +258,55 @@ suite "Waku Sync":
         if i < msgCount - 10000:
           client5.ingessMessage(DefaultPubsubTopic, msg)
         server.ingessMessage(DefaultPubsubTopic, msg)
-        i = i + 1
-      #info "client2 storage size", size = client2.storageSize()
+        i += 1
 
       var timeBefore = getNowInNanosecondTime()
       let hashes1 = await client.sync(serverPeerInfo)
       var timeAfter = getNowInNanosecondTime()
       var syncTime = (timeAfter - timeBefore)
-      info "sync time in seconds", msgsTotal = msgCount, diff = 1, syncTime = syncTime
+      debug "sync time in seconds", msgsTotal = msgCount, diff = 1, syncTime = syncTime
       assert hashes1.isOk(), $hashes1.error
       check:
         hashes1.value.len == 1
-        #TODO: Check if all diffHashes are there in needHashes
 
       timeBefore = getNowInNanosecondTime()
       let hashes2 = await client2.sync(serverPeerInfo)
       timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
-      info "sync time in seconds", msgsTotal = msgCount, diff = 10, syncTime = syncTime
+      debug "sync time in seconds", msgsTotal = msgCount, diff = 10, syncTime = syncTime
       assert hashes2.isOk(), $hashes2.error
       check:
         hashes2.value.len == 10
-        #TODO: Check if all diffHashes are there in needHashes
 
       timeBefore = getNowInNanosecondTime()
       let hashes3 = await client3.sync(serverPeerInfo)
       timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
-      info "sync time in seconds", msgsTotal = msgCount, diff = 100, syncTime = syncTime
+      debug "sync time in seconds",
+        msgsTotal = msgCount, diff = 100, syncTime = syncTime
       assert hashes3.isOk(), $hashes3.error
       check:
         hashes3.value.len == 100
-        #TODO: Check if all diffHashes are there in needHashes
 
       timeBefore = getNowInNanosecondTime()
       let hashes4 = await client4.sync(serverPeerInfo)
       timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
-      info "sync time in seconds",
+      debug "sync time in seconds",
         msgsTotal = msgCount, diff = 1000, syncTime = syncTime
       assert hashes4.isOk(), $hashes4.error
       check:
         hashes4.value.len == 1000
-        #TODO: Check if all diffHashes are there in needHashes
 
       timeBefore = getNowInNanosecondTime()
       let hashes5 = await client5.sync(serverPeerInfo)
       timeAfter = getNowInNanosecondTime()
       syncTime = (timeAfter - timeBefore)
-      info "sync time in seconds",
+      debug "sync time in seconds",
         msgsTotal = msgCount, diff = 10000, syncTime = syncTime
       assert hashes5.isOk(), $hashes5.error
       check:
         hashes5.value.len == 10000
-        #TODO: Check if all diffHashes are there in needHashes
 
       await allFutures(client2.stop(), client3.stop(), client4.stop(), client5.stop())
       await allFutures(
