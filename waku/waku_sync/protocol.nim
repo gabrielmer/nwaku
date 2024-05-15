@@ -21,8 +21,7 @@ import
   ../node/peer_manager/peer_manager,
   ./raw_bindings,
   ./common,
-  ./session,
-  ./storage_manager
+  ./session
 
 logScope:
   topics = "waku sync"
@@ -49,9 +48,7 @@ proc storageSize*(self: WakuSync): int =
 proc ingessMessage*(self: WakuSync, pubsubTopic: PubsubTopic, msg: WakuMessage) =
   if msg.ephemeral:
     return
-  #TODO: Do we need to check if this message has already been ingessed? 
-  # because what if messages is received via gossip and sync as well?
-  # Might 2 entries to be inserted into storage which is inefficient.
+
   let msgHash: WakuMessageHash = computeMessageHash(pubsubTopic, msg)
 
   trace "inserting message into storage ",
@@ -117,35 +114,29 @@ proc request(
       return ok(hashes)
 
 proc sync*(
-    self: WakuSync
+    self: WakuSync, peerInfo: Option[RemotePeerInfo] = none(RemotePeerInfo)
 ): Future[Result[(seq[WakuMessageHash], RemotePeerInfo), string]] {.async, gcsafe.} =
-  let peer: RemotePeerInfo = self.peerManager.selectPeer(WakuSyncCodec).valueOr:
-    return err("No suitable peer found for sync")
+  let peer =
+    if peerInfo.isSome():
+      peerInfo.get()
+    else:
+      let peer: RemotePeerInfo = self.peerManager.selectPeer(WakuSyncCodec).valueOr:
+        return err("No suitable peer found for sync")
+
+      peer
+
   let connOpt = await self.peerManager.dialPeer(peer, WakuSyncCodec)
+
   let conn: Connection = connOpt.valueOr:
     return err("Cannot establish sync connection")
 
   let hashes: seq[WakuMessageHash] = (await self.request(conn)).valueOr:
     debug "sync session ended",
       server = self.peerManager.switch.peerInfo.peerId, client = conn.peerId, error
+
     return err("Sync request error: " & error)
 
   return ok((hashes, peer))
-
-proc sync*(
-    self: WakuSync, peer: RemotePeerInfo
-): Future[Result[seq[WakuMessageHash], string]] {.async, gcsafe.} =
-  let connOpt = await self.peerManager.dialPeer(peer, WakuSyncCodec)
-  let conn: Connection = connOpt.valueOr:
-    return err("Cannot establish sync connection")
-
-  let hashes: seq[WakuMessageHash] = (await self.request(conn)).valueOr:
-    debug "sync session ended",
-      server = self.peerManager.switch.peerInfo.peerId, client = conn.peerId, error
-
-    return err("Sync request error: " & error)
-
-  return ok(hashes)
 
 proc handleLoop(
     self: WakuSync, conn: Connection
@@ -211,10 +202,9 @@ proc new*(
     relayJitter: Duration = DefaultGossipSubJitter,
     pruneCB: Option[PruneCallBack] = none(PruneCallback),
     transferCB: Option[TransferCallback] = none(TransferCallback),
-): T =
+): Result[T, string] =
   let storage = Storage.new().valueOr:
-    debug "storage creation failed"
-    return
+    return err("negentropy storage creation failed")
 
   let sync = WakuSync(
     storage: storage,
@@ -231,7 +221,7 @@ proc new*(
 
   info "WakuSync protocol initialized"
 
-  return sync
+  return ok(sync)
 
 proc periodicSync(self: WakuSync, callback: TransferCallback) {.async.} =
   debug "periodic sync initialized", interval = $self.syncInterval
@@ -270,12 +260,18 @@ proc periodicPrune(self: WakuSync, callback: PruneCallback) {.async.} =
     var (elements, cursor) =
       (newSeq[(WakuMessageHash, Timestamp)](0), none(WakuMessageHash))
 
+    var tries = 3
     while true:
       (elements, cursor) = (
         await callback(self.pruneStart - self.pruneOffset.nanos, pruneStop, cursor)
       ).valueOr:
         debug "pruning callback failed", error
-        break
+        if tries > 0:
+          tries -= 1
+          await sleepAsync(30.seconds)
+          continue
+        else:
+          break
 
       if elements.len == 0:
         break

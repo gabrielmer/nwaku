@@ -264,7 +264,6 @@ proc mountWakuSync*(
     query.paginationLimit = some(uint64(100))
 
     while true:
-      # Do we need a query retry mechanism??
       let queryRes = catch:
         await node.wakuStoreClient.query(query, peerId)
 
@@ -302,12 +301,13 @@ proc mountWakuSync*(
     relayJitter = relayJitter,
     pruneCB = prune,
     transferCB = some(transfer),
-  )
+  ).valueOr:
+    return err("Waku sync initializtion failed: " & error)
 
   let catchRes = catch:
     node.switch.mount(node.wakuSync, protocolMatcher(WakuSyncCodec))
   if catchRes.isErr():
-    return err(catchRes.error.msg)
+    return err("mounting waku sync to the switch failed: " & catchRes.error.msg)
 
   if node.started:
     node.wakuSync.start()
