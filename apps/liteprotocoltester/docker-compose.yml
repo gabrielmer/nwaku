@@ -53,7 +53,7 @@ services:
     image: waku.liteprotocoltester:latest
     build:
       context: ../..
-      dockerfile: ./apps/liteprotocoltester/Dockerfile.liteprotocoltester
+      dockerfile: ./apps/liteprotocoltester/Dockerfile.liteprotocoltester.copy
     ports:
       # - 30304:30304/tcp
       # - 30304:30304/udp
@@ -83,12 +83,15 @@ services:
       - sender
     depends_on:
       - servicenode
+    configs:
+      - source: cfg_tester_node.toml
+        target: config.toml
 
   receivernode:
     image: waku.liteprotocoltester:latest
     build:
       context: ../..
-      dockerfile: ./apps/liteprotocoltester/Dockerfile.liteprotocoltester
+      dockerfile: ./apps/liteprotocoltester/Dockerfile.liteprotocoltester.copy
     ports:
       # - 30304:30304/tcp
       # - 30304:30304/udp
@@ -119,6 +122,9 @@ services:
     depends_on:
       - servicenode
       - publishernode
+    configs:
+      - source: cfg_tester_node.toml
+        target: config.toml
 
   prometheus:
     image: docker.io/prom/prometheus:latest
@@ -148,3 +154,7 @@ services:
     depends_on:
       - prometheus
 
+configs:
+  cfg_tester_node.toml:
+    content: |
+      max-connections = 100

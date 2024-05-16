@@ -28,13 +28,7 @@ logScope:
   topics = "liteprotocoltester main"
 
 proc logConfig(conf: LiteProtocolTesterConf) =
-  info "Configuration: Lite protocol tester",
-    serviceNode = conf.servicenode,
-    testFunction = conf.testFunc,
-    numMessages = conf.numMessages,
-    delayMessages = conf.delayMessages,
-    pubsubTopic = conf.pubsubTopics,
-    contentTopic = conf.contentTopics
+  info "Configuration: Lite protocol tester", conf = $conf
 
 {.pop.}
 when isMainModule:
@@ -86,6 +80,7 @@ when isMainModule:
         secondarySources = proc(
             wnconf: WakuNodeConf, sources: auto
         ) {.gcsafe, raises: [ConfigurationError].} =
+          echo "Loading secondary configuration file into WakuNodeConf"
           sources.addConfigFile(Toml, configFile)
         ,
       )
@@ -95,6 +90,7 @@ when isMainModule:
 
   wakuConf.staticNodes = @[conf.serviceNode]
   wakuConf.nat = conf.nat
+  wakuConf.maxConnections = 100
   wakuConf.restAddress = conf.restAddress
   wakuConf.restPort = conf.restPort
   wakuConf.restAllowOrigin = conf.restAllowOrigin

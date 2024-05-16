@@ -5,6 +5,10 @@ if test -f .env; then
   . $(pwd)/.env
 fi
 
+which ip
+which grep
+which sed
+
 IP=$(ip a | grep "inet " | grep -Fv 127.0.0.1 | sed 's/.*inet \([^/]*\).*/\1/')
 
 echo "I am a lite-protocol-tester node"
@@ -59,8 +63,12 @@ if [ -z "${FUNCTION}" ]; then
   FUNCTION=--test-func=receiver
 fi
 
+set -x
+set -v
+
 echo "Using service node: ${SERIVCE_NODE_ADDR}"
 exec /usr/bin/liteprotocoltester\
+      --log-level=TRACE\
       --service-node="${SERIVCE_NODE_ADDR}"\
       --pubsub-topic=/waku/2/default-waku/proto\
       --cluster-id=44\
@@ -71,3 +79,5 @@ exec /usr/bin/liteprotocoltester\
       ${PUBSUB}\
       ${CONTENT_TOPIC}\
       ${REST_PORT}
+
+      # --config-file=config.toml\
