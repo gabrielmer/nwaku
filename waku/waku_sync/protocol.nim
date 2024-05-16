@@ -302,6 +302,10 @@ proc start*(self: WakuSync) =
   info "WakuSync protocol started"
 
 proc stopWait*(self: WakuSync) {.async.} =
-  await self.periodicSyncFut.cancelAndWait()
+  if self.transferCallBack.isSome() and self.syncInterval > ZeroDuration:
+    await self.periodicSyncFut.cancelAndWait()
+
+  if self.pruneCallBack.isSome() and self.syncInterval > ZeroDuration:
+    await self.periodicPruneFut.cancelAndWait()
 
   info "WakuSync protocol stopped"

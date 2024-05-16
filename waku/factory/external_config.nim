@@ -371,12 +371,14 @@ type WakuNodeConf* = object
     .}: int64
 
     storeSyncRelayJitter* {.
+      hidden,
       desc: "Time offset to account for message propagation jitter. In seconds.",
       defaultValue: 20,
       name: "store-sync-relay-jitter"
     .}: int64
 
     storeSyncMaxPayloadSize* {.
+      hidden,
       desc:
         "Max size in bytes of the inner negentropy payload. Cannot be less than 5K, 0 is unlimited.",
       defaultValue: 0,

@@ -302,7 +302,7 @@ proc mountWakuSync*(
     pruneCB = prune,
     transferCB = some(transfer),
   ).valueOr:
-    return err("Waku sync initializtion failed: " & error)
+    return err("Waku sync initialization failed: " & error)
 
   let catchRes = catch:
     node.switch.mount(node.wakuSync, protocolMatcher(WakuSyncCodec))
@@ -311,6 +311,39 @@ proc mountWakuSync*(
 
   if node.started:
     node.wakuSync.start()
+
+  if not node.wakuArchive.isNil():
+    let endTime = getNowInNanosecondTime()
+    let starTime = endTime - syncInterval.nanos
+
+    var query = ArchiveQuery(
+      includeData: true,
+      cursor: none(ArchiveCursor),
+      startTime: some(starTime),
+      endTime: some(endTime),
+      pageSize: 100,
+    )
+
+    while true:
+      let catchable = catch:
+        waitfor node.wakuArchive.findMessages(query)
+
+      let res =
+        if catchable.isErr():
+          return err(catchable.error.msg)
+        else:
+          catchable.get()
+
+      let response = res.valueOr:
+        return err($error)
+
+      for (topic, msg) in response.topics.zip(response.messages):
+        node.wakuSync.ingessMessage(topic, msg)
+
+      if response.cursor.isNone():
+        break
+
+      query.cursor = response.cursor
 
   return ok()
 

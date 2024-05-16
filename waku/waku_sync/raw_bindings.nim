@@ -48,7 +48,7 @@ proc toBuffer*(x: openArray[byte]): Buffer =
   let output = Buffer(`ptr`: cast[ptr uint8](baseAddr), len: uint64(temp.len))
   return output
 
-proc BufferToBytes(buffer: ptr Buffer, len: Option[uint64] = none(uint64)): seq[byte] =
+proc bufferToBytes(buffer: ptr Buffer, len: Option[uint64] = none(uint64)): seq[byte] =
   var bufLen: uint64
   if isNone(len):
     bufLen = buffer.len
@@ -247,7 +247,7 @@ proc initiate*(negentropy: NegentropySubrange): Result[NegentropyPayload, string
   if ret < 0 or myResultPtr == nil:
     error "negentropy initiate failed with code ", code = ret
     return err("negentropy already initiated!")
-  let bytes: seq[byte] = BufferToBytes(addr(myResultPtr.output))
+  let bytes: seq[byte] = bufferToBytes(addr(myResultPtr.output))
   free_result(myResultPtr)
   trace "received return from initiate", len = myResultPtr.output.len
 
@@ -273,7 +273,7 @@ proc serverReconcile*(
     return err($myResultPtr.error)
   trace "received return from raw_reconcile", len = myResultPtr.output.len
 
-  let outputBytes: seq[byte] = BufferToBytes(addr(myResultPtr.output))
+  let outputBytes: seq[byte] = bufferToBytes(addr(myResultPtr.output))
   trace "outputBytes len", len = outputBytes.len
   free_result(myResultPtr)
 
@@ -300,7 +300,7 @@ proc clientReconcile*(
     error "raw_reconcile failed with code ", code = ret
     return err($myResultPtr.error)
 
-  let output = BufferToBytes(addr myResult.output)
+  let output = bufferToBytes(addr myResult.output)
 
   var
     have_hashes: seq[Buffer]
