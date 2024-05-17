@@ -45,18 +45,18 @@ echo "Tester node: ${FUNCTION}"
 
 REST_PORT=--rest-port=8647
 
-if [ "${FUNCTION}" = "sender" ]; then
-  FUNCTION=--test-func=sender
+if [ "${FUNCTION}" = "SENDER" ]; then
+  FUNCTION=--test-func=SENDER
   REST_PORT=--rest-port=8646
 fi
 
-if [ "${FUNCTION}" = "receiver" ]; then
-  FUNCTION=--test-func=receiver
+if [ "${FUNCTION}" = "RECEIVER" ]; then
+  FUNCTION=--test-func=RECEIVER
   REST_PORT=--rest-port=8647
 fi
 
 if [ -z "${FUNCTION}" ]; then
-  FUNCTION=--test-func=receiver
+  FUNCTION=--test-func=RECEIVER
 fi
 
 echo "Using service node: ${SERIVCE_NODE_ADDR}"

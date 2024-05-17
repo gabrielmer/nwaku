@@ -88,6 +88,8 @@ when isMainModule:
       error "Loading Waku configuration failed", error = getCurrentExceptionMsg()
       quit(QuitFailure)
 
+  wakuConf.logLevel = conf.logLevel
+  wakuConf.logFormat = conf.logFormat
   wakuConf.staticNodes = @[conf.serviceNode]
   wakuConf.nat = conf.nat
   wakuConf.maxConnections = 100
@@ -100,7 +102,7 @@ when isMainModule:
   wakuConf.clusterId = conf.clusterId
   ## TODO: Depending on the tester needs we might extend here with shards, clusterId, etc...
 
-  if conf.testFunc == TesterFunctionality.sender:
+  if conf.testFunc == TesterFunctionality.SENDER:
     wakuConf.lightpushnode = conf.serviceNode
   else:
     wakuConf.filterNode = conf.serviceNode
@@ -192,7 +194,7 @@ when isMainModule:
 
   info "Node setup complete"
 
-  if conf.testFunc == TesterFunctionality.sender:
+  if conf.testFunc == TesterFunctionality.SENDER:
     setupAndPublish(wakuApp.node, conf)
   else:
     setupAndSubscribe(wakuApp.node, conf)

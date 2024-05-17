@@ -28,8 +28,8 @@ const
   LiteContentTopic* = ContentTopic("/tester/1/light-pubsub-example/proto")
 
 type TesterFunctionality* = enum
-  sender # pumps messages to the network
-  receiver # gather and analyze messages from the network
+  SENDER # pumps messages to the network
+  RECEIVER # gather and analyze messages from the network
 
 type LiteProtocolTesterConf* = object
   configFile* {.
@@ -66,7 +66,7 @@ type LiteProtocolTesterConf* = object
 
   testFunc* {.
     desc: "Specifies the lite protocol tester side. Supported values: sender, receiver.",
-    defaultValue: TesterFunctionality.receiver,
+    defaultValue: TesterFunctionality.RECEIVER,
     name: "test-func"
   .}: TesterFunctionality
 

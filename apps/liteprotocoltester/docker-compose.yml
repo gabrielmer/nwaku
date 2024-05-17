@@ -80,7 +80,7 @@ services:
     entrypoint: sh
     command:
       - /opt/run_tester_node.sh
-      - sender
+      - SENDER
     depends_on:
       - servicenode
     configs:
@@ -118,7 +118,7 @@ services:
     entrypoint: sh
     command:
       - /opt/run_tester_node.sh
-      - receiver
+      - RECEIVER
     depends_on:
       - servicenode
       - publishernode

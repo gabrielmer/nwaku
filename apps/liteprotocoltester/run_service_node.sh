@@ -14,7 +14,6 @@ exec /usr/bin/wakunode\
       --rest-admin=true\
       --rest-private=true\
       --rest-address=0.0.0.0\
-      --rest-allow-origin="waku-org.github.io"\
       --rest-allow-origin="*"\
       --keep-alive=true\
       --max-connections=300\
