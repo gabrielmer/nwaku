@@ -55,7 +55,7 @@ proc publishMessages(
   let selfPeerId = $wakuNode.switch.peerInfo.peerId
 
   var messagesSent: uint32 = 1
-  while numMessages > messagesSent:
+  while numMessages >= messagesSent:
     let message = prepareMessage(
       selfPeerId, messagesSent, numMessages, startedAt, prevMessageAt,
       lightpushContentTopic,
