@@ -107,7 +107,7 @@ proc setupAndSubscribe*(wakuNode: WakuNode, conf: LiteProtocolTesterConf) =
         waitFor unsubscribe(
           wakuNode, remotePeer, conf.pubsubTopics[0], conf.contentTopics[0]
         )
-        echo "All messages received. Exiting."
+        info "All messages received. Exiting."
         ## quit(QuitSuccess)
         ## for gracefull shutdown through signal hooks
         discard c_raise(ansi_c.SIGTERM)

@@ -19,24 +19,27 @@ proc prepareMessage(
     sender: string,
     messageIndex, numMessages: uint32,
     startedAt: TimeStamp,
-    prevMessageAt: Timestamp,
+    prevMessageAt: var Timestamp,
     contentTopic: ContentTopic,
 ): WakuMessage =
+  let current = getNowInNanosecondTime()
   let payload = ProtocolTesterMessage(
     sender: sender,
     index: messageIndex,
     count: numMessages,
     startedAt: startedAt,
-    sinceStart: getNowInNanosecondTime() - startedAt,
-    sincePrev: getNowInNanosecondTime() - prevMessageAt,
+    sinceStart: current - startedAt,
+    sincePrev: current - prevMessageAt,
   )
+
+  prevMessageAt = current
 
   let text = js.Json.encode(payload)
   let message = WakuMessage(
     payload: toBytes(text), # content of the message
     contentTopic: contentTopic, # content topic to publish to
     ephemeral: true, # tell store nodes to not store it
-    timestamp: getNowInNanosecondTime(), # current timestamp
+    timestamp: current, # current timestamp
   )
 
   return message
@@ -60,7 +63,6 @@ proc publishMessages(
       selfPeerId, messagesSent, numMessages, startedAt, prevMessageAt,
       lightpushContentTopic,
     )
-    prevMessageAt = getNowInNanosecondTime()
     let wlpRes = await wakuNode.lightpushPublish(some(lightpushPubsubTopic), message)
 
     if wlpRes.isOk():

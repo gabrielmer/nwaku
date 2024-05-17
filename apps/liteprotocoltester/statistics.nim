@@ -22,6 +22,7 @@ type
     allMessageCount*: uint32
     receivedMessages*: uint32
     misorderCount*: uint32
+    lateCount*: uint32
     duplicateCount*: uint32
     minLatency*: Duration
     maxLatency*: Duration
@@ -33,6 +34,9 @@ type
 proc init*(T: type Statistics, expectedMessageCount: int = 1000): T =
   result.helper.prevIndex = 0
   result.helper.seenIndicies.init(expectedMessageCount)
+  result.minLatency = nanos(0)
+  result.maxLatency = nanos(0)
+  result.cummulativeLatency = nanos(0)
   return result
 
 proc addMessage*(self: var Statistics, msg: ProtocolTesterMessage) =
@@ -59,28 +63,37 @@ proc addMessage*(self: var Statistics, msg: ProtocolTesterMessage) =
     ## collect possible lost message indicies
     for idx in self.helper.prevIndex + 1 ..< msg.index:
       self.helper.lostIndicies.incl(idx)
-
-  ## may remove late arrival
-  self.helper.lostIndicies.excl(msg.index)
+  elif self.helper.prevIndex > msg.index:
+    inc(self.lateCount)
+    warn "Late message arrival", index = msg.index, expected = self.helper.prevIndex + 1
+  else:
+    ## may remove late arrival
+    self.helper.lostIndicies.excl(msg.index)
 
   ## calculate latency
   let currentArrivedAt = Moment.now()
-  let delaySincePrevArrived = self.helper.prevArrivedAt - currentArrivedAt
 
-  let expectedDelay = nanos(msg.sincePrev)
+  let delaySincePrevArrived: Duration = currentArrivedAt - self.helper.prevArrivedAt
 
-  let latency = delaySincePrevArrived - expectedDelay
-  self.helper.prevArrivedAt = currentArrivedAt
+  let expectedDelay: Duration = nanos(msg.sincePrev)
+
+  var latency: Duration
+
+  # if we have any latency...
+  if expectedDelay > delaySincePrevArrived:
+    latency = delaySincePrevArrived - expectedDelay
+    if self.minLatency.isZero or (latency < self.minLatency and latency > nanos(0)):
+      self.minLatency = latency
+    if latency > self.maxLatency:
+      self.maxLatency = latency
+    self.cummulativeLatency += latency
+  else:
+    warn "Negative latency detected",
+      index = msg.index, expected = expectedDelay, actual = delaySincePrevArrived
+
   self.helper.prevIndex = msg.index
-
+  self.helper.prevArrivedAt = currentArrivedAt
   inc(self.receivedMessages)
-
-  if self.minLatency.isZero or (latency < self.minLatency and latency > nanos(0)):
-    self.minLatency = latency
-  if latency > self.maxLatency:
-    self.maxLatency = latency
-
-  self.cummulativeLatency += latency
 
 proc addMessage*(
     self: var PerPeerStatistics, peerId: string, msg: ProtocolTesterMessage
@@ -101,15 +114,15 @@ proc averageLatency*(self: Statistics): Duration =
 
 proc echoStat*(self: Statistics) =
   let printable = catch:
-    """*----------------------------------------------------------------*
-|  Expected  |  Reveived  |    Loss    |  Misorder  |  Duplicate |
-|{self.allMessageCount:>11} |{self.receivedMessages:>11} |{self.lossCount():>11} |{self.misorderCount:>11} |{self.duplicateCount:>11} |
-*----------------------------------------------------------------*
-| Latency stat:                                                  |
-|    avg latency: {self.averageLatency():<47}|
-|    min latency: {self.maxLatency:<47}|
-|    max latency: {self.minLatency:<47}|
-*----------------------------------------------------------------*""".fmt()
+    """*-----------------------------------------------------------------------------*
+|  Expected  |  Reveived  |    Loss    |  Misorder  |    Late    |  Duplicate |
+|{self.allMessageCount:>11} |{self.receivedMessages:>11} |{self.lossCount():>11} |{self.misorderCount:>11} |{self.lateCount:>11} |{self.duplicateCount:>11} |
+*-----------------------------------------------------------------------------*
+| Latency stat:                                                               |
+|    avg latency: {$self.averageLatency():<60}|
+|    min latency: {$self.maxLatency:<60}|
+|    max latency: {$self.minLatency:<60}|
+*-----------------------------------------------------------------------------*""".fmt()
 
   if printable.isErr:
     echo "Error while printing statistics"
@@ -122,6 +135,7 @@ proc jsonStat*(self: Statistics): string =
          \"received\": {self.receivedMessages},
          \"loss\": {self.lossCount()},
          \"misorder\": {self.misorderCount},
+         \"late\": {self.lateCount},
          \"duplicate\": {self.duplicateCount},
          \"latency\":
            {{\"avg\": {self.averageLatency()},
