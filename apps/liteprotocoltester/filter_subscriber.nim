@@ -87,20 +87,16 @@ proc setupAndSubscribe*(wakuNode: WakuNode, conf: LiteProtocolTesterConf) =
 
     stats.addMessage(testerMessage.sender, testerMessage)
 
-    let startedSecs = testerMessage.startedAt.seconds()
-    let startedNano = testerMessage.startedAt mod Second.seconds()
-    let testStartTime = initTime(startedSecs.secs(), startedNano)
-
-    debug "message received",
+    trace "message received",
       index = testerMessage.index,
       count = testerMessage.count,
-      startedAt = $testStartTime,
+      startedAt = $testerMessage.startedAt,
       sinceStart = $testerMessage.sinceStart,
       sincePrev = $testerMessage.sincePrev
 
   wakuNode.wakuFilterClient.registerPushHandler(pushHandler)
 
-  let interval = millis(500)
+  let interval = millis(20000)
   var printStats: CallbackFunc
 
   printStats = CallbackFunc(
@@ -111,7 +107,7 @@ proc setupAndSubscribe*(wakuNode: WakuNode, conf: LiteProtocolTesterConf) =
         waitFor unsubscribe(
           wakuNode, remotePeer, conf.pubsubTopics[0], conf.contentTopics[0]
         )
-
+        echo "All messages received. Exiting."
         ## quit(QuitSuccess)
         ## for gracefull shutdown through signal hooks
         discard c_raise(ansi_c.SIGTERM)

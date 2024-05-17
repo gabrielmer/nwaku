@@ -61,7 +61,7 @@ fi
 
 echo "Using service node: ${SERIVCE_NODE_ADDR}"
 exec /usr/bin/liteprotocoltester\
-      --log-level=TRACE\
+      --log-level=DEBUG\
       --service-node="${SERIVCE_NODE_ADDR}"\
       --pubsub-topic=/waku/2/default-waku/proto\
       --cluster-id=0\

@@ -65,8 +65,8 @@ proc addMessage*(self: var Statistics, msg: ProtocolTesterMessage) =
 
   ## calculate latency
   let currentArrivedAt = Moment.now()
-
   let delaySincePrevArrived = self.helper.prevArrivedAt - currentArrivedAt
+
   let expectedDelay = nanos(msg.sincePrev)
 
   let latency = delaySincePrevArrived - expectedDelay
@@ -101,15 +101,15 @@ proc averageLatency*(self: Statistics): Duration =
 
 proc echoStat*(self: Statistics) =
   let printable = catch:
-    """*------------------------------------------------------------------*
-|  Expected  |  Reveived  |    Loss    |   Misorder  |  Duplicate  |
+    """*----------------------------------------------------------------*
+|  Expected  |  Reveived  |    Loss    |  Misorder  |  Duplicate |
 |{self.allMessageCount:>11} |{self.receivedMessages:>11} |{self.lossCount():>11} |{self.misorderCount:>11} |{self.duplicateCount:>11} |
-*------------------------------------------------------------------*
-| Latency stat:                                                    |
-|    avg latency: {self.averageLatency():<50}|
-|    min latency: {self.maxLatency:<50}
-|    max latency: {self.minLatency:<50}|"
-*------------------------------------------------------------------*""".fmt()
+*----------------------------------------------------------------*
+| Latency stat:                                                  |
+|    avg latency: {self.averageLatency():<47}|
+|    min latency: {self.maxLatency:<47}|
+|    max latency: {self.minLatency:<47}|
+*----------------------------------------------------------------*""".fmt()
 
   if printable.isErr:
     echo "Error while printing statistics"
@@ -137,7 +137,7 @@ proc jsonStat*(self: Statistics): string =
 proc echoStats*(self: var PerPeerStatistics) =
   for peerId, stats in self.pairs:
     let peerLine = catch:
-      "Receiver statistics from peer {peerId}\n".fmt()
+      "Receiver statistics from peer {peerId}".fmt()
     if peerLine.isErr:
       echo "Error while printing statistics"
     else:
@@ -161,7 +161,13 @@ proc jsonStats*(self: var PerPeerStatistics): string =
       "\"}"
 
 proc checkIfAllMessagesReceived*(self: PerPeerStatistics): bool =
+  # if there are no peers have sent messages, assume we just have started.
+  if self.len == 0:
+    return false
+
   for stat in self.values:
-    if stat.allMessageCount != stat.receivedMessages:
+    if (stat.allMessageCount == 0 and stat.receivedMessages == 0) or
+        stat.receivedMessages < stat.allMessageCount:
       return false
+
   return true

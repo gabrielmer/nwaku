@@ -75,8 +75,8 @@ proc publishMessages(
 
   let report = catch:
     """*----------------------------------------*
-|  Expected  |    Sent    |    Failed    |
-|{numMessages:>11} |{messagesSent-failedToSendCount:>11} |{failedToSendCount:>11} |
+|  Expected  |    Sent    |   Failed   |
+|{numMessages:>11} |{messagesSent-failedToSendCount-1:>11} |{failedToSendCount:>11} |
 *----------------------------------------*""".fmt()
 
   if report.isErr:
@@ -90,6 +90,13 @@ proc setupAndPublish*(wakuNode: WakuNode, conf: LiteProtocolTesterConf) =
   if wakuNode.wakuLightpushClient == nil:
     error "WakuFilterClient not initialized"
     return
+
+  # give some time to receiver side to set up
+  # TODO: this maybe done in more sphisticated way, though.
+  let waitTillStartTesting = 5.seconds
+
+  info "Sending test messages in", wait = waitTillStartTesting
+  waitFor sleepAsync(waitTillStartTesting)
 
   info "Start sending messages to service node using lightpush"
 
